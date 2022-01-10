@@ -1,0 +1,183 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.8.10/themes/smoothness/jquery-ui.css" type="text/css">
+    <script type="text/javascript" src="https://ajax.aspnetcdn.com/ajax/jquery.ui/1.8.10/jquery-ui.min.js"></script>
+    <title>SignalR Chat</title>
+</head>
+<body>
+    <div id="loginBlock">
+        Введите логин:<br />
+        <input id="userName" type="text" />
+        <input id="userPassword" type="text" />
+        <input id="loginBtn" type="button" value="Войти" />
+        <input id="EnterBtn" type="button" value="Установить соединение" />
+    </div><br />
+
+    <div id="chatBlock">
+        <select id="chatId">
+        </select>
+        <!--<input id="chatId" type="text" />-->
+    </div><br />
+
+    <div id="header"></div><br />
+
+    <div id="inputForm">
+        <input type="text" id="message" />
+        <input type="button" id="sendBtn" disabled value="Отправить" />
+    </div>
+    <div id="chatroom"></div>
+
+    <script src="js/signalr/dist/browser/signalr.min.js"></script>
+    <script>
+        let token;      // токен
+        let username;   // имя пользователя
+        const hubConnection = new signalR.HubConnectionBuilder()
+            .withUrl("/chat", { accessTokenFactory: () => token }) //http://139.162.168.53:8989
+            .build();
+
+        hubConnection.on("Notify", function (message) {
+
+            let elem = document.createElement("p");
+            elem.appendChild(document.createTextNode(message));
+
+            var firstElem = document.getElementById("chatroom").firstChild;
+            document.getElementById("chatroom").insertBefore(elem, firstElem);
+        });
+        hubConnection.on("Receive", function (message, userName, userId, chatId) {
+            console.log(message, username);
+            // создаем элемент <b> для имени пользователя
+            let userNameElem = document.createElement("b");
+            userNameElem.appendChild(document.createTextNode(userName + ": "));
+
+            // создает элемент <p> для сообщения пользователя
+            let elem = document.createElement("p");
+            elem.appendChild(userNameElem);
+            elem.appendChild(document.createTextNode(message));
+
+            var firstElem = document.getElementById("chatroom").firstChild;
+            document.getElementById("chatroom").insertBefore(elem, firstElem);
+
+        });
+        //hubConnection.on("Sent", function (message, userName) {
+
+        //    // создаем элемент <b> для имени пользователя
+        //    let userNameElem = document.createElement("b");
+        //    userNameElem.appendChild(document.createTextNode(userName + ": "));
+
+        //    // создает элемент <p> для сообщения пользователя
+        //    let elem = document.createElement("p");
+        //    elem.appendChild(userNameElem);
+        //    elem.appendChild(document.createTextNode(message));
+
+        //    var firstElem = document.getElementById("chatroom").firstChild;
+        //    document.getElementById("chatroom").insertBefore(elem, firstElem);
+        //});
+
+        //hubConnection.on("Receive", function (message, userName) {
+
+        //    // создаем элемент <b> для имени пользователя
+        //    let userNameElem = document.createElement("b");
+        //    userNameElem.appendChild(document.createTextNode(userName + ": "));
+
+        //    // создает элемент <p> для сообщения пользователя
+        //    let elem = document.createElement("p");
+        //    elem.appendChild(userNameElem);
+        //    elem.appendChild(document.createTextNode(message));
+
+        //    var firstElem = document.getElementById("chatroom").firstChild;
+        //    document.getElementById("chatroom").insertBefore(elem, firstElem);
+        //});
+
+        // аутентификация
+        document.getElementById("loginBtn").addEventListener("click", function (e) {
+
+            var request = new XMLHttpRequest();
+            // посылаем запрос на адрес "/token", в ответ получим токен и имя пользователя
+            request.open("POST", "/api/Account/authenticate", true);
+            request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+            request.addEventListener("load", function () {
+                if (request.status < 400) { // если запрос успешный
+                    let data = JSON.parse(request.response);   // парсим ответ
+                    token = data.accessToken;
+                    username = data.username;
+                    console.log(token + " " + username);
+
+                    document.getElementById("sendBtn").disabled = false;
+
+                    hubConnection.start()       // начинаем соединение с хабом
+                        .then(res => { console.log(hubConnection) })
+                        .catch(err => {
+                            console.error(err.toString());
+                            document.getElementById("loginBtn").disabled = true;
+                            document.getElementById("sendBtn").disabled = true;
+                        });
+                }
+            });
+            // отправляем запрос на аутентификацию
+            request.send(JSON.stringify({ "username": document.getElementById("userName").value, "password": document.getElementById("userPassword").value }));
+        });
+        //document.getElementById("groupBtn").addEventListener("click", function (e) {
+        //    hubConnection.invoke("Join", username);
+        //    hubConnection.on("SendChatMessage", function (receiver, message) {
+
+        //        let elem = document.createElement("p");
+        //        elem.appendChild(document.createTextNode(message));
+
+        //        var firstElem = document.getElementById("chatroom").firstChild;
+        //        document.getElementById("chatroom").insertBefore(elem, firstElem);
+        //        console.log(username + " joined group");
+        //    });
+        //});
+        // отправка сообщения на сервер
+        document.getElementById("EnterBtn").addEventListener("click", function (e) {
+            hubConnection.invoke("Enter", username);
+
+            //const getChatRoomsId = async () => {
+            //    const response = await fetch('https://localhost:5001/api/ChatRooms/GetUserChatRooms');
+            //    const myJson = await response.json(); //extract JSON from the http response
+            //    // do something with myJson
+            //    console.log(myJson);
+            //}
+            //getChatRoomsId();
+            $.ajax({
+                url: '/api/ChatRooms/GetUserChatRooms',
+                type: 'GET',
+                contentType: 'application/json',
+                headers: {
+                    'Authorization': 'Bearer ' + token
+                },
+                success: function (result) {
+                    var select = document.getElementById("chatId");
+                    for (var i = 0; i < result.length; i++) {
+                        var opt = result[i].idChat;
+                        var el = document.createElement("option");
+                        el.textContent = opt;
+                        el.value = opt;
+                        select.appendChild(el);
+                    }
+                },
+                error: function (error) {
+                    console.log(error);
+                }
+            });
+
+
+            
+            //let message = document.getElementById("message").value;
+            //let receiver = document.getElementById("receiverName").value;
+            //hubConnection.invoke("SendChatMessage", receiver, message);
+            /*console.log(receiver);*/
+        });
+        document.getElementById("sendBtn").addEventListener("click", function (e) {
+            let message = document.getElementById("message").value;
+            var select = document.getElementById("chatId");
+            let chatId = select.options[select.selectedIndex].text;
+            let userName = document.getElementById("userName").value;
+            hubConnection.invoke("Send", message, userName, chatId);
+        });
+    </script>
+</body>
+</html>
